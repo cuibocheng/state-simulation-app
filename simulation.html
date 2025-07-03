@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>General State-Based Simulation Tool</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5;
+        }
+        .config-card {
+            background-color: white;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .code-editor {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            background-color: #1e293b;
+            color: #e2e8f0;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            outline: none;
+            border: 1px solid #334155;
+            min-height: 400px;
+        }
+        .btn {
+            padding: 0.6rem 1.2rem;
+            border-radius: 0.5rem;
+            font-weight: 500;
+            text-align: center;
+            transition: all 0.2s ease-in-out;
+            cursor: pointer;
+        }
+        .btn-primary {
+            background-color: #4f46e5;
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #4338ca;
+        }
+         .btn-secondary {
+            background-color: #64748b;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background-color: #475569;
+        }
+        .btn-danger {
+            background-color: #dc2626;
+            color: white;
+        }
+        .btn-danger:hover {
+            background-color: #b91c1c;
+        }
+        input[type="text"], input[type="number"], textarea {
+            border: 1px solid #d1d5db;
+            border-radius: 0.375rem;
+            padding: 0.5rem 0.75rem;
+            width: 100%;
+            transition: border-color 0.2s;
+        }
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #4f46e5;
+            box-shadow: 0 0 0 1px #4f46e5;
+        }
+        #simulationStages li {
+            background-color: #f8fafc;
+            border: 1px solid #e2e8f0;
+        }
+    </style>
+</head>
+<body class="p-4 lg:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-800">State-Based Simulation Tool</h1>
+            <p class="text-lg text-gray-600 mt-2">Model complex systems with dynamic transition probabilities.</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            
+            <!-- Left Column: Configuration -->
+            <div class="lg:col-span-4">
+                <div class="config-card">
+                    <h2 class="text-xl font-semibold mb-4 text-gray-700">1. Define States</h2>
+                    <textarea id="statesInput" rows="4" class="w-full" placeholder="Enter state names, one per line (e.g., Susceptible)"></textarea>
+                </div>
+                
+                <div class="config-card">
+                    <h2 class="text-xl font-semibold mb-4 text-gray-700">2. Initial Population</h2>
+                    <div id="initialPopulationContainer" class="space-y-3">
+                        <p class="text-gray-500">Define states first.</p>
+                    </div>
+                </div>
+
+                <div class="config-card">
+                    <h2 class="text-xl font-semibold mb-4 text-gray-700">3. Add Simulation Stage</h2>
+                     <div class="space-y-4">
+                        <div>
+                            <label class="font-medium text-gray-600">Duration</label>
+                            <input type="number" id="durationInput" value="50" class="mt-1">
+                        </div>
+                        <div>
+                            <label class="font-medium text-gray-600">Time Step (dt)</label>
+                            <input type="number" id="dtInput" value="0.5" step="0.01" class="mt-1">
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-semibold my-2 text-gray-700">External Factors</h3>
+                            <div id="externalFactorsContainer" class="space-y-2"></div>
+                            <button id="addFactorBtn" class="text-sm text-indigo-600 hover:text-indigo-800 mt-2">+ Add Factor</button>
+                        </div>
+                         <button id="addStageBtn" class="btn btn-secondary w-full">Add Stage</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Center Column: Transition Logic & Control -->
+            <div class="lg:col-span-8">
+                <div class="config-card">
+                    <h2 class="text-xl font-semibold mb-4 text-gray-700">4. Define Transition Logic (JavaScript)</h2>
+                    <p class="text-sm text-gray-500 mb-4">
+                        The function must return a 2D array (matrix) `T` where `T[i][j]` is the probability rate of moving from state `i` to `j`.
+                        <br><strong>Arguments:</strong> `population` (array), `percentages` (array), `time` (number), `factors` (object).
+                    </p>
+                    <textarea id="transitionFunctionInput" class="code-editor w-full"></textarea>
+                    <div id="logicErrorLog" class="text-red-500 text-sm mt-2 font-mono"></div>
+                </div>
+                <div class="config-card">
+                    <h2 class="text-xl font-semibold mb-4 text-gray-700">5. Simulation Plan & Control</h2>
+                    <ul id="simulationStages" class="space-y-2 mb-4">
+                        <p class="text-gray-500 text-center p-4" id="noStagesText">No stages added yet. Configure a stage and click "Add Stage".</p>
+                    </ul>
+                    <div class="flex space-x-4">
+                        <button id="runBtn" class="btn btn-primary w-full">Run Simulation</button>
+                        <button id="resetBtn" class="btn btn-danger w-full">Reset All</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Row: Visualization -->
+            <div class="lg:col-span-12">
+                <div class="config-card">
+                    <h2 class="text-xl font-semibold mb-4 text-gray-700">Simulation Results</h2>
+                    <div id="chartContainer" style="position: relative; height:40vh; width:100%;">
+                        <canvas id="simulationChart"></canvas>
+                    </div>
+                    <div class="mt-6">
+                        <h3 class="text-lg font-semibold text-gray-700">Final State</h3>
+                        <table class="w-full mt-2 text-left">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="p-2 border rounded-tl-lg">State</th>
+                                    <th class="p-2 border rounded-tr-lg">Population</th>
+                                </tr>
+                            </thead>
+                            <tbody id="resultsTableBody">
+                                <tr><td colspan="2" class="p-4 text-center text-gray-500 border">Run a simulation to see results.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // --- SIMULATION ENGINE ---
+    class StateSimulation {
+        constructor(states, initialPopulation, transitionFunction) {
+            this.states = states;
+            this.stateMap = new Map(states.map((name, i) => [name, i]));
+            this.initialPopulation = new Array(states.length).fill(0);
+            for (const name in initialPopulation) {
+                if (this.stateMap.has(name)) {
+                    this.initialPopulation[this.stateMap.get(name)] = initialPopulation[name];
+                }
+            }
+            this.transitionFunction = transitionFunction;
+            this._reset();
+        }
+
+        _reset() {
+            this.population = [...this.initialPopulation];
+            this.totalPopulation = this.initialPopulation.reduce((a, b) => a + b, 0);
+            this.time = 0.0;
+            this.history = [];
+            this._recordState();
+        }
+
+        _recordState() {
+            const record = { time: this.time };
+            this.states.forEach((name, i) => {
+                record[name] = this.population[i];
+            });
+            this.history.push(record);
+        }
+
+        run(duration, dt, externalFactors = {}) {
+            const numSteps = Math.floor(duration / dt);
+            for (let i = 0; i < numSteps; i++) {
+                const percentages = this.totalPopulation > 0 
+                    ? this.population.map(p => p / this.totalPopulation) 
+                    : new Array(this.states.length).fill(0);
+
+                const transitionMatrix = this.transitionFunction(this.population, percentages, this.time, externalFactors);
+                if (!Array.isArray(transitionMatrix) || !Array.isArray(transitionMatrix[0])) {
+                    throw new Error("Transition function must return a 2D array (matrix).");
+                }
+
+                const outflowProb = transitionMatrix.map(row => row.reduce((a, b) => a + b, 0));
+                
+                const inflow = new Array(this.states.length).fill(0);
+                for (let j = 0; j < this.states.length; j++) {
+                    for (let k = 0; k < this.states.length; k++) {
+                        inflow[j] += this.population[k] * (transitionMatrix[k][j] || 0);
+                    }
+                }
+                
+                const outflow = this.population.map((pop, j) => pop * (outflowProb[j] || 0));
+
+                const deltaPopulation = inflow.map((inf, j) => (inf - outflow[j]) * dt);
+                
+                this.population = this.population.map((pop, j) => {
+                    const newPop = pop + deltaPopulation[j];
+                    return newPop < 0 ? 0 : newPop;
+                });
+                
+                this.time += dt;
+                this._recordState();
+            }
+        }
+    }
+
+
+    // --- UI & APPLICATION LOGIC ---
+    document.addEventListener('DOMContentLoaded', () => {
+        // --- Element References ---
+        const statesInput = document.getElementById('statesInput');
+        const initialPopulationContainer = document.getElementById('initialPopulationContainer');
+        const transitionFunctionInput = document.getElementById('transitionFunctionInput');
+        const durationInput = document.getElementById('durationInput');
+        const dtInput = document.getElementById('dtInput');
+        const externalFactorsContainer = document.getElementById('externalFactorsContainer');
+        const addFactorBtn = document.getElementById('addFactorBtn');
+        const addStageBtn = document.getElementById('addStageBtn');
+        const simulationStagesContainer = document.getElementById('simulationStages');
+        const noStagesText = document.getElementById('noStagesText');
+        const runBtn = document.getElementById('runBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const chartContainer = document.getElementById('chartContainer');
+        const resultsTableBody = document.getElementById('resultsTableBody');
+        const logicErrorLog = document.getElementById('logicErrorLog');
+
+        let chart;
+        let stages = [];
+
+        // --- Default SIR Model Setup ---
+        const defaultSIR = {
+            states: "Susceptible\nInfected\nRecovered",
+            initialPop: { "Susceptible": 997, "Infected": 3, "Recovered": 0 },
+            factors: [{ key: 'social_distancing_effect', value: 0.7 }],
+            logic: `// SIR Model Transition Logic
+// T[i][j] is the rate of transition FROM state i TO state j.
+const [S, I, R] = [0, 1, 2]; // State indices
+
+// Model parameters
+const baseInfectionRate = 0.3;
+const recoveryRate = 0.1;
+
+// Get external factor, with a default if not provided
+const socialDistancing = factors.social_distancing_effect || 1.0;
+
+// Calculate the chance of a susceptible person meeting an infected one
+const effectiveInfectionRate = baseInfectionRate * percentages[I] * socialDistancing;
+
+// Create an empty transition matrix
+const T = [
+    [0, 0, 0], // From Susceptible
+    [0, 0, 0], // From Infected
+    [0, 0, 0]  // From Recovered
+];
+
+// Define transitions
+T[S][I] = effectiveInfectionRate; // Susceptible -> Infected
+T[I][R] = recoveryRate;           // Infected -> Recovered
+
+return T;`
+        };
+
+        function initialize() {
+            statesInput.value = defaultSIR.states;
+            transitionFunctionInput.value = defaultSIR.logic;
+            stages = [];
+            updatePopulationInputs();
+            updateFactorsUI(defaultSIR.factors);
+            updateStagesUI();
+            resetChart();
+            clearResultsTable();
+        }
+
+        // --- UI Update Functions ---
+        function updatePopulationInputs() {
+            const states = statesInput.value.split('\n').map(s => s.trim()).filter(Boolean);
+            initialPopulationContainer.innerHTML = '';
+            if (states.length === 0) {
+                initialPopulationContainer.innerHTML = '<p class="text-gray-500">Define states first.</p>';
+                return;
+            }
+            states.forEach(state => {
+                const val = (defaultSIR.initialPop[state] !== undefined && stages.length === 0) ? defaultSIR.initialPop[state] : 0;
+                const div = document.createElement('div');
+                div.innerHTML = `
+                    <label class="font-medium text-gray-600">${state}</label>
+                    <input type="number" data-state="${state}" value="${val}" class="mt-1 initial-pop-input">
+                `;
+                initialPopulationContainer.appendChild(div);
+            });
+        }
+        
+        function updateFactorsUI(factors = []) {
+            externalFactorsContainer.innerHTML = '';
+            if (factors.length === 0) addFactorRow();
+            else factors.forEach(f => addFactorRow(f.key, f.value));
+        }
+
+        function addFactorRow(key = '', value = '') {
+            const div = document.createElement('div');
+            div.className = 'flex items-center space-x-2';
+            div.innerHTML = `
+                <input type="text" placeholder="Factor Name" class="factor-key" value="${key}">
+                <input type="number" placeholder="Value" class="factor-value" value="${value}">
+                <button class="remove-factor-btn text-red-500 hover:text-red-700 font-bold">X</button>
+            `;
+            externalFactorsContainer.appendChild(div);
+            div.querySelector('.remove-factor-btn').addEventListener('click', () => div.remove());
+        }
+        
+        function updateStagesUI() {
+            simulationStagesContainer.innerHTML = '';
+            if (stages.length === 0) {
+                 simulationStagesContainer.appendChild(noStagesText);
+                 noStagesText.style.display = 'block';
+            } else {
+                 noStagesText.style.display = 'none';
+            }
+            
+            stages.forEach((stage, index) => {
+                const li = document.createElement('li');
+                li.className = 'p-3 rounded-lg flex justify-between items-center';
+                const factorsString = Object.entries(stage.factors).map(([k, v]) => `${k}: ${v}`).join(', ') || 'None';
+                li.innerHTML = `
+                    <div>
+                        <p class="font-semibold">Stage ${index + 1}</p>
+                        <p class="text-sm text-gray-600">Duration: ${stage.duration}, dt: ${stage.dt}, Factors: ${factorsString}</p>
+                    </div>
+                    <button class="remove-stage-btn btn btn-danger btn-sm" data-index="${index}">Remove</button>
+                `;
+                simulationStagesContainer.appendChild(li);
+            });
+            document.querySelectorAll('.remove-stage-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    stages.splice(parseInt(e.target.dataset.index), 1);
+                    updateStagesUI();
+                });
+            });
+        }
+
+        // --- Event Handlers ---
+        statesInput.addEventListener('input', updatePopulationInputs);
+        addFactorBtn.addEventListener('click', () => addFactorRow());
+
+        addStageBtn.addEventListener('click', () => {
+            const factors = {};
+            externalFactorsContainer.querySelectorAll('.flex').forEach(row => {
+                const key = row.querySelector('.factor-key').value.trim();
+                const value = parseFloat(row.querySelector('.factor-value').value);
+                if (key && !isNaN(value)) {
+                    factors[key] = value;
+                }
+            });
+            stages.push({
+                duration: parseFloat(durationInput.value),
+                dt: parseFloat(dtInput.value),
+                factors: factors
+            });
+            updateStagesUI();
+        });
+
+        resetBtn.addEventListener('click', () => {
+            initialize();
+        });
+
+        runBtn.addEventListener('click', () => {
+            logicErrorLog.textContent = '';
+            // 1. Gather all configs
+            const states = statesInput.value.split('\n').map(s => s.trim()).filter(Boolean);
+            const initialPopulation = {};
+            document.querySelectorAll('.initial-pop-input').forEach(input => {
+                initialPopulation[input.dataset.state] = parseFloat(input.value);
+            });
+            const transitionLogicStr = transitionFunctionInput.value;
+
+            // 2. Validate
+            if (states.length === 0 || stages.length === 0 || !transitionLogicStr) {
+                logicErrorLog.textContent = 'Error: Please define states, add at least one stage, and provide transition logic.';
+                return;
+            }
+
+            // 3. Create transition function safely
+            let transitionFunction;
+            try {
+                transitionFunction = new Function('population', 'percentages', 'time', 'factors', transitionLogicStr);
+            } catch (e) {
+                logicErrorLog.textContent = `Syntax Error in transition logic: ${e.message}`;
+                return;
+            }
+            
+            // 4. Initialize and run simulation
+            try {
+                const sim = new StateSimulation(states, initialPopulation, transitionFunction);
+                stages.forEach(stage => {
+                    sim.run(stage.duration, stage.dt, stage.factors);
+                });
+
+                // 5. Visualize results
+                updateChart(sim.history, states);
+                updateResultsTable(sim.history.slice(-1)[0], states);
+            } catch (e) {
+                logicErrorLog.textContent = `Runtime Error during simulation: ${e.message}`;
+            }
+        });
+
+        // --- Chart & Results Functions ---
+        const chartColors = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6', '#d946ef'];
+
+        function resetChart() {
+             if (chart) {
+                chart.destroy();
+            }
+             const ctx = document.getElementById('simulationChart').getContext('2d');
+             chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: []
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { title: { display: true, text: 'Time' } },
+                        y: { title: { display: true, text: 'Population' } }
+                    },
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    plugins: {
+                        tooltip: {
+                            position: 'nearest'
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateChart(history, states) {
+            resetChart();
+            chart.data.labels = history.map(d => d.time.toFixed(2));
+            chart.data.datasets = states.map((state, i) => ({
+                label: state,
+                data: history.map(d => d[state]),
+                borderColor: chartColors[i % chartColors.length],
+                backgroundColor: chartColors[i % chartColors.length] + '33', // with transparency
+                borderWidth: 2,
+                tension: 0.1,
+                pointRadius: 0
+            }));
+            chart.update();
+        }
+        
+        function updateResultsTable(finalState, states) {
+            resultsTableBody.innerHTML = '';
+            if (!finalState) return;
+            states.forEach(state => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="p-2 border">${state}</td>
+                    <td class="p-2 border">${finalState[state].toFixed(3)}</td>
+                `;
+                resultsTableBody.appendChild(row);
+            });
+        }
+
+        function clearResultsTable() {
+            resultsTableBody.innerHTML = `<tr><td colspan="2" class="p-4 text-center text-gray-500 border">Run a simulation to see results.</td></tr>`;
+        }
+
+        // --- Initial Load ---
+        initialize();
+    });
+    </script>
+</body>
+</html>
