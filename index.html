@@ -83,7 +83,7 @@
     <div class="max-w-7xl mx-auto">
         <header class="text-center mb-8">
             <h1 class="text-4xl font-bold text-gray-800">State-Based Simulation Tool</h1>
-            <p class="text-lg text-gray-600 mt-2">Model complex systems with dynamic transition probabilities.</p>
+            <p class="text-lg text-gray-600 mt-2">Model complex systems with dynamic, state-dependent equations.</p>
         </header>
 
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -92,7 +92,7 @@
             <div class="lg:col-span-4">
                 <div class="config-card">
                     <h2 class="text-xl font-semibold mb-4 text-gray-700">1. Define States</h2>
-                    <textarea id="statesInput" rows="4" class="w-full" placeholder="Enter state names, one per line (e.g., Susceptible)"></textarea>
+                    <textarea id="statesInput" rows="4" class="w-full" placeholder="Enter state names, one per line (e.g., Rabbits)"></textarea>
                 </div>
                 
                 <div class="config-card">
@@ -107,14 +107,14 @@
                      <div class="space-y-4">
                         <div>
                             <label class="font-medium text-gray-600">Duration</label>
-                            <input type="number" id="durationInput" value="50" class="mt-1">
+                            <input type="number" id="durationInput" value="200" class="mt-1">
                         </div>
                         <div>
                             <label class="font-medium text-gray-600">Time Step (dt)</label>
-                            <input type="number" id="dtInput" value="0.5" step="0.01" class="mt-1">
+                            <input type="number" id="dtInput" value="0.1" step="0.01" class="mt-1">
                         </div>
                         <div>
-                            <h3 class="text-lg font-semibold my-2 text-gray-700">External Factors</h3>
+                            <h3 class="text-lg font-semibold my-2 text-gray-700">External Factors (Model Parameters)</h3>
                             <div id="externalFactorsContainer" class="space-y-2"></div>
                             <button id="addFactorBtn" class="text-sm text-indigo-600 hover:text-indigo-800 mt-2">+ Add Factor</button>
                         </div>
@@ -123,15 +123,15 @@
                 </div>
             </div>
 
-            <!-- Center Column: Transition Logic & Control -->
+            <!-- Center Column: Rate of Change Logic & Control -->
             <div class="lg:col-span-8">
                 <div class="config-card">
-                    <h2 class="text-xl font-semibold mb-4 text-gray-700">4. Define Transition Logic (JavaScript)</h2>
+                    <h2 class="text-xl font-semibold mb-4 text-gray-700">4. Define Rate of Change Logic (JavaScript)</h2>
                     <p class="text-sm text-gray-500 mb-4">
-                        The function must return a 2D array (matrix) `T` where `T[i][j]` is the probability rate of moving from state `i` to `j`.
+                        The function must return an array of the **rates of change** (`dPopulation/dt`) for each state. The order must match the defined states.
                         <br><strong>Arguments:</strong> `population` (array), `percentages` (array), `time` (number), `factors` (object).
                     </p>
-                    <textarea id="transitionFunctionInput" class="code-editor w-full"></textarea>
+                    <textarea id="rateOfChangeFunctionInput" class="code-editor w-full"></textarea>
                     <div id="logicErrorLog" class="text-red-500 text-sm mt-2 font-mono"></div>
                 </div>
                 <div class="config-card">
@@ -173,9 +173,9 @@
     </div>
 
     <script>
-    // --- SIMULATION ENGINE ---
+    // --- SIMULATION ENGINE (v2) ---
     class StateSimulation {
-        constructor(states, initialPopulation, transitionFunction) {
+        constructor(states, initialPopulation, rateOfChangeFunction) {
             this.states = states;
             this.stateMap = new Map(states.map((name, i) => [name, i]));
             this.initialPopulation = new Array(states.length).fill(0);
@@ -184,13 +184,12 @@
                     this.initialPopulation[this.stateMap.get(name)] = initialPopulation[name];
                 }
             }
-            this.transitionFunction = transitionFunction;
+            this.rateOfChangeFunction = rateOfChangeFunction;
             this._reset();
         }
 
         _reset() {
             this.population = [...this.initialPopulation];
-            this.totalPopulation = this.initialPopulation.reduce((a, b) => a + b, 0);
             this.time = 0.0;
             this.history = [];
             this._recordState();
@@ -207,27 +206,19 @@
         run(duration, dt, externalFactors = {}) {
             const numSteps = Math.floor(duration / dt);
             for (let i = 0; i < numSteps; i++) {
-                const percentages = this.totalPopulation > 0 
-                    ? this.population.map(p => p / this.totalPopulation) 
+                const totalPopulation = this.population.reduce((a, b) => a + b, 0);
+                const percentages = totalPopulation > 0 
+                    ? this.population.map(p => p / totalPopulation) 
                     : new Array(this.states.length).fill(0);
 
-                const transitionMatrix = this.transitionFunction(this.population, percentages, this.time, externalFactors);
-                if (!Array.isArray(transitionMatrix) || !Array.isArray(transitionMatrix[0])) {
-                    throw new Error("Transition function must return a 2D array (matrix).");
+                // Get the vector of change rates from the user-defined function
+                const rates = this.rateOfChangeFunction(this.population, percentages, this.time, externalFactors);
+                if (!Array.isArray(rates) || rates.length !== this.states.length) {
+                    throw new Error(`Rate of change function must return an array of length ${this.states.length}.`);
                 }
 
-                const outflowProb = transitionMatrix.map(row => row.reduce((a, b) => a + b, 0));
-                
-                const inflow = new Array(this.states.length).fill(0);
-                for (let j = 0; j < this.states.length; j++) {
-                    for (let k = 0; k < this.states.length; k++) {
-                        inflow[j] += this.population[k] * (transitionMatrix[k][j] || 0);
-                    }
-                }
-                
-                const outflow = this.population.map((pop, j) => pop * (outflowProb[j] || 0));
-
-                const deltaPopulation = inflow.map((inf, j) => (inf - outflow[j]) * dt);
+                // Update population using the rates (Forward Euler method)
+                const deltaPopulation = rates.map(r => r * dt);
                 
                 this.population = this.population.map((pop, j) => {
                     const newPop = pop + deltaPopulation[j];
@@ -246,7 +237,7 @@
         // --- Element References ---
         const statesInput = document.getElementById('statesInput');
         const initialPopulationContainer = document.getElementById('initialPopulationContainer');
-        const transitionFunctionInput = document.getElementById('transitionFunctionInput');
+        const rateOfChangeFunctionInput = document.getElementById('rateOfChangeFunctionInput');
         const durationInput = document.getElementById('durationInput');
         const dtInput = document.getElementById('dtInput');
         const externalFactorsContainer = document.getElementById('externalFactorsContainer');
@@ -263,45 +254,54 @@
         let chart;
         let stages = [];
 
-        // --- Default SIR Model Setup ---
-        const defaultSIR = {
-            states: "Susceptible\nInfected\nRecovered",
-            initialPop: { "Susceptible": 997, "Infected": 3, "Recovered": 0 },
-            factors: [{ key: 'social_distancing_effect', value: 0.7 }],
-            logic: `// SIR Model Transition Logic
-// T[i][j] is the rate of transition FROM state i TO state j.
-const [S, I, R] = [0, 1, 2]; // State indices
+        // --- Default Predator-Prey Model Setup ---
+        const defaultModel = {
+            states: "Grass\nRabbits\nFoxes",
+            initialPop: { "Grass": 1000, "Rabbits": 100, "Foxes": 10 },
+            factors: [
+                { key: 'grassGrowthRate', value: 0.8 },
+                { key: 'grassDeathByRabbit', value: 0.002 },
+                { key: 'rabbitGrowthByGrass', value: 0.001 },
+                { key: 'rabbitDeathByFox', value: 0.005 },
+                { key: 'rabbitNaturalDeath', value: 0.2 },
+                { key: 'foxGrowthByRabbit', value: 0.0005 },
+                { key: 'foxNaturalDeath', value: 0.1 },
+            ],
+            logic: `// Predator-Prey Model (Lotka-Volterra Style)
+// This function must return an array of the *rate of change* for each population.
+// d(Population)/dt = ...
 
-// Model parameters
-const baseInfectionRate = 0.3;
-const recoveryRate = 0.1;
+const [G, R, F] = [0, 1, 2]; // Indices for Grass, Rabbits, Foxes
 
-// Get external factor, with a default if not provided
-const socialDistancing = factors.social_distancing_effect || 1.0;
+// Get current population for easier reference
+const grassPop = population[G];
+const rabbitPop = population[R];
+const foxPop = population[F];
 
-// Calculate the chance of a susceptible person meeting an infected one
-const effectiveInfectionRate = baseInfectionRate * percentages[I] * socialDistancing;
+// Get model parameters from external factors
+const grassGrowthRate = factors.grassGrowthRate;
+const grassDeathByRabbit = factors.grassDeathByRabbit;
+const rabbitGrowthByGrass = factors.rabbitGrowthByGrass;
+const rabbitDeathByFox = factors.rabbitDeathByFox;
+const rabbitNaturalDeath = factors.rabbitNaturalDeath;
+const foxGrowthByRabbit = factors.foxGrowthByRabbit;
+const foxNaturalDeath = factors.foxNaturalDeath;
 
-// Create an empty transition matrix
-const T = [
-    [0, 0, 0], // From Susceptible
-    [0, 0, 0], // From Infected
-    [0, 0, 0]  // From Recovered
-];
+// Calculate the rate of change for each population based on interactions
+const dGrass_dt = grassPop * grassGrowthRate - grassPop * rabbitPop * grassDeathByRabbit;
+const dRabbit_dt = grassPop * rabbitPop * rabbitGrowthByGrass - rabbitPop * foxPop * rabbitDeathByFox - rabbitPop * rabbitNaturalDeath;
+const dFox_dt = rabbitPop * foxPop * foxGrowthByRabbit - foxPop * foxNaturalDeath;
 
-// Define transitions
-T[S][I] = effectiveInfectionRate; // Susceptible -> Infected
-T[I][R] = recoveryRate;           // Infected -> Recovered
-
-return T;`
+// Return the array of change rates in the correct order
+return [dGrass_dt, dRabbit_dt, dFox_dt];`
         };
 
         function initialize() {
-            statesInput.value = defaultSIR.states;
-            transitionFunctionInput.value = defaultSIR.logic;
+            statesInput.value = defaultModel.states;
+            rateOfChangeFunctionInput.value = defaultModel.logic;
             stages = [];
             updatePopulationInputs();
-            updateFactorsUI(defaultSIR.factors);
+            updateFactorsUI(defaultModel.factors);
             updateStagesUI();
             resetChart();
             clearResultsTable();
@@ -316,7 +316,7 @@ return T;`
                 return;
             }
             states.forEach(state => {
-                const val = (defaultSIR.initialPop[state] !== undefined && stages.length === 0) ? defaultSIR.initialPop[state] : 0;
+                const val = (defaultModel.initialPop[state] !== undefined && stages.length === 0) ? defaultModel.initialPop[state] : 0;
                 const div = document.createElement('div');
                 div.innerHTML = `
                     <label class="font-medium text-gray-600">${state}</label>
@@ -407,26 +407,26 @@ return T;`
             document.querySelectorAll('.initial-pop-input').forEach(input => {
                 initialPopulation[input.dataset.state] = parseFloat(input.value);
             });
-            const transitionLogicStr = transitionFunctionInput.value;
+            const rateOfChangeLogicStr = rateOfChangeFunctionInput.value;
 
             // 2. Validate
-            if (states.length === 0 || stages.length === 0 || !transitionLogicStr) {
-                logicErrorLog.textContent = 'Error: Please define states, add at least one stage, and provide transition logic.';
+            if (states.length === 0 || stages.length === 0 || !rateOfChangeLogicStr) {
+                logicErrorLog.textContent = 'Error: Please define states, add at least one stage, and provide rate of change logic.';
                 return;
             }
 
-            // 3. Create transition function safely
-            let transitionFunction;
+            // 3. Create rate of change function safely
+            let rateOfChangeFunction;
             try {
-                transitionFunction = new Function('population', 'percentages', 'time', 'factors', transitionLogicStr);
+                rateOfChangeFunction = new Function('population', 'percentages', 'time', 'factors', rateOfChangeLogicStr);
             } catch (e) {
-                logicErrorLog.textContent = `Syntax Error in transition logic: ${e.message}`;
+                logicErrorLog.textContent = `Syntax Error in logic: ${e.message}`;
                 return;
             }
             
             // 4. Initialize and run simulation
             try {
-                const sim = new StateSimulation(states, initialPopulation, transitionFunction);
+                const sim = new StateSimulation(states, initialPopulation, rateOfChangeFunction);
                 stages.forEach(stage => {
                     sim.run(stage.duration, stage.dt, stage.factors);
                 });
@@ -440,7 +440,7 @@ return T;`
         });
 
         // --- Chart & Results Functions ---
-        const chartColors = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6', '#d946ef'];
+        const chartColors = ['#10b981', '#f59e0b', '#ef4444', '#4f46e5', '#3b82f6', '#8b5cf6', '#d946ef'];
 
         function resetChart() {
              if (chart) {
